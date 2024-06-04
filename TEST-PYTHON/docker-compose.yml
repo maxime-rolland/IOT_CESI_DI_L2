@@ -1,0 +1,75 @@
+version: '3.1'
+
+services:
+  # On utilise traefik pour faire un reverse proxy (Récupèrer les connexions entrantes
+  # et les rediriger vers le bon service), il permet également l'obtention de certificat
+  # à l'aide de letsEncrypt, attention à modifier votre fichier .env
+  reverse-proxy:
+    image: traefik:latest
+    container_name: "traefik_demoPython"
+    command:
+      # - "--log.level=DEBUG"
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
+      - "--certificatesresolvers.myresolver.acme.email=toto@toto.com"
+      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
+
+    ports:
+      - 80:80
+      - 443:443
+    volumes:
+      - "./letsencrypt:/letsencrypt"
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    restart: always
+
+  ## Service utilisé au démarrage uniquement pour installer les dépendances nécessaires
+  ## au fonctionnement de notre backend
+  # installBackend:
+  #   image: node:lts
+  #   working_dir: /app
+  #   volumes:
+  #     - ./backend/app:/app
+  #   command: "npm install"
+  ## Service utilisé au démarrage uniquement pour installer les dépendances nécessaires
+  ## au fonctionnement de notre backend
+  # installFrontend:
+  #   image: node
+  #   working_dir: /app
+  #   volumes:
+  #     - ./frontend:/app
+  #   command: "yarn install"
+
+  ## Si on utilise une image custom pour lancer le backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: custom_backend_image_flask
+    restart: always
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.backend.rule=Host(`backend.groupe3.learn-it.ovh`)"
+      - "traefik.http.routers.backend.entrypoints=websecure"
+      - "traefik.http.routers.backend.tls.certresolver=myresolver"
+      - "traefik.http.routers.backend.service=backendService"
+      - "traefik.http.services.backendService.loadBalancer.server.port=5000"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: custom_frontend_image_flask
+    restart: always
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend.rule=Host(`frontend.groupe3.learn-it.ovh`)"
+      - "traefik.http.routers.frontend.entrypoints=websecure"
+      - "traefik.http.routers.frontend.tls.certresolver=myresolver"
+      - "traefik.http.routers.frontend.service=frontendService"
+      - "traefik.http.services.frontendService.loadBalancer.server.port=5000"
